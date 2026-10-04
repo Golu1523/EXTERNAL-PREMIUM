@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shake Exe Admin</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+    <style>
+        :root {
+            --primary: #007AFF;
+            --primary-light: #4DA3FF;
+            --danger: #FF3B30;
+            --success: #34C759;
+            --bg-dark: #050505;
+            --sidebar-bg: #0c0c0c;
+            --card-bg: #121212;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-main: #ffffff;
+            --text-dim: #888888;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
+        body { background: var(--bg-dark); color: var(--text-main); height: 100vh; overflow: hidden; }
+
+        #loginPage {
+            position: fixed; inset: 0; background: radial-gradient(circle at center, #111 0%, #000 100%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 10000; padding: 20px; overflow: hidden;
+        }
+        #snowCanvas { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+        #mouseGlow {
+            position: fixed; width: 300px; height: 300px;
+            background: radial-gradient(circle, rgba(255,59,48,0.18) 0%, transparent 70%);
+            border-radius: 50%; pointer-events: none; z-index: 1;
+            transform: translate(-50%, -50%);
+            transition: left 0.08s ease, top 0.08s ease;
+        }
+        .login-card {
+            background: rgba(18,18,18,0.75);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,59,48,0.15);
+            padding: 40px; border-radius: 24px; width: 100%; max-width: 400px;
+            text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            position: relative; z-index: 2;
+        }
+        .login-logo-circle {
+            width: 120px; height: 120px; border-radius: 50%;
+            overflow: hidden; margin: 0 auto 20px;
+            border: 2px solid rgba(255,59,48,0.4);
+            box-shadow: 0 0 35px rgba(255,59,48,0.35), 0 0 70px rgba(255,59,48,0.15);
+            background: #000; display: flex; align-items: center; justify-content: center;
+        }
+        .login-logo-circle img { width: 100%; height: 100%; object-fit: cover; object-position: center 60%; border-radius: 50%; }
+        .login-card h1 { font-size: 28px; font-weight: 800; margin-bottom: 6px; }
+        .login-card h1 span { color: var(--danger); }
+        .login-card p { color: var(--text-dim); margin-bottom: 28px; font-size: 14px; }
+        .pass-wrapper { position: relative; margin-bottom: 0; }
+        .login-input {
+            width: 100%; padding: 13px 46px 13px 16px;
+            background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px; color: white; outline: none;
+            text-align: left; font-size: 15px; transition: 0.3s; margin-bottom: 0;
+        }
+        .login-input::placeholder { color: var(--text-dim); font-size: 14px; font-weight: 600; }
+        .login-input:focus { border-color: var(--danger); box-shadow: 0 0 15px rgba(255,59,48,0.25); }
+        .pass-toggle {
+            position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 15px; padding: 4px;
+        }
+        .pass-toggle:hover { color: #fff; }
+        .remember-row { display: flex; align-items: center; justify-content: flex-start; gap: 8px; margin: 12px 0 18px 2px; }
+        .remember-row input[type=checkbox] { width: 15px; height: 15px; margin: 0; accent-color: var(--danger); cursor: pointer; }
+        .remember-row label { color: var(--text-dim); font-size: 13px; font-weight: 600; cursor: pointer; margin: 0; }
+        .login-err { color: var(--danger); font-size: 13px; font-weight: 700; margin-bottom: 12px; display: none; }
+        .btn-unlock {
+            width: 100%; padding: 14px; border-radius: 12px; border: none;
+            background: var(--danger); color: #fff; font-weight: 800;
+            cursor: pointer; font-size: 14px; text-transform: uppercase; transition: 0.2s; letter-spacing: 1px;
+        }
+        .btn-unlock:hover { opacity: 0.88; }
+        .btn-unlock:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .dashboard { display: none; height: 100vh; width: 100vw; }
+
+        aside {
+            width: 280px; background: var(--sidebar-bg); border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; padding: 30px 20px; flex-shrink: 0;
+        }
+        .logo { font-size: 24px; font-weight: 800; margin-bottom: 50px; padding-left: 10px; }
+        .logo span { color: var(--danger); }
+        .nav-menu { flex: 1; }
+        .nav-link {
+            display: flex; align-items: center; gap: 15px; padding: 15px 20px;
+            color: var(--text-dim); text-decoration: none; border-radius: 12px;
+            margin-bottom: 8px; cursor: pointer; transition: 0.3s; font-weight: 600;
+        }
+        .nav-link i { font-size: 18px; width: 25px; }
+        .nav-link:hover { background: rgba(255,255,255,0.05); color: #fff; }
+        .nav-link.active { background: var(--primary); color: white; box-shadow: 0 10px 20px rgba(0,122,255,0.3); }
+        .sidebar-footer { padding-top: 20px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+
+        main { flex: 1; overflow-y: auto; background: var(--bg-dark); position: relative; }
+        .top-bar {
+            position: sticky; top: 0; background: rgba(5,5,5,0.8); backdrop-filter: blur(10px);
+            padding: 20px 40px; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center; z-index: 100;
+        }
+        .page-title { font-size: 20px; font-weight: 700; }
+        .status-pill {
+            display: flex; align-items: center; gap: 8px; background: #111;
+            padding: 8px 16px; border-radius: 50px; font-size: 11px; font-weight: 800; border: 1px solid var(--border);
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; transform: translateY(2px); }
+        .content-body { padding: 40px; max-width: 1400px; margin: 0 auto; }
+
+        #userList { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+
+        .card-flip-wrapper { perspective: 1200px; height: 200px; }
+        .card-inner {
+            position: relative; width: 100%; height: 100%;
+            transition: transform 0.65s cubic-bezier(0.4, 0.2, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+        .card-flip-wrapper.flipped .card-inner { transform: rotateY(180deg); }
+        .card-front, .card-back {
+            position: absolute; width: 100%; height: 100%;
+            backface-visibility: hidden; -webkit-backface-visibility: hidden;
+            border-radius: 18px; padding: 22px; border: 1px solid var(--border);
+            box-sizing: border-box; background: var(--card-bg);
+        }
+        .card-front { cursor: pointer; transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s; }
+        .card-front:hover { border-color: rgba(255,255,255,0.18); transform: translateY(-5px); box-shadow: 0 12px 30px rgba(0,0,0,0.4); }
+        .card-back {
+            transform: rotateY(180deg);
+            background: linear-gradient(135deg, #0a1628 0%, #0e0e1a 100%);
+            border-color: rgba(0,122,255,0.25); cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+
+        .key-line {
+            font-size: 18px; font-weight: 800; color: #fff;
+            word-break: break-all; line-height: 1.3;
+        }
+        .key-line .key-label { color: #ffffff; font-weight: 800; margin-right: 6px; }
+
+        .vip-crown { font-size: 26px; line-height: 1; margin-bottom: 5px; filter: drop-shadow(0 0 8px #FFD60A); text-align:center; }
+        .vip-text {
+            font-size: 24px; font-weight: 800; letter-spacing: 5px;
+            background: linear-gradient(135deg, #FFD60A 0%, #FF9500 50%, #FFD60A 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; text-align:center;
+        }
+        .vip-sub { font-size: 10px; color: rgba(255,213,10,0.45); font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-top: 3px; text-align:center; }
+
+        .countdown-user-name { font-size: 11px; color: var(--text-dim); font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px; text-align:center; }
+        .countdown-segments { display: flex; justify-content: center; gap: 6px; }
+        .seg { background: rgba(0,122,255,0.1); border: 1px solid rgba(0,122,255,0.2); border-radius: 8px; padding: 8px 10px; min-width: 50px; text-align: center; }
+        .seg-num { font-size: 18px; font-weight: 800; color: var(--primary); font-family: monospace; line-height: 1; }
+        .seg-label { font-size: 9px; color: var(--text-dim); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px; }
+        .expired-tag { font-size: 14px; font-weight: 800; color: var(--danger); letter-spacing: 2px; text-align:center; }
+
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 10px; }
+
+        .badge {
+            font-size: 10px; padding: 4px 8px; line-height: 1; height: fit-content;
+            border-radius: 4px; font-weight: 800; text-transform: uppercase; display: inline-block; vertical-align: middle;
+        }
+        .badge-active { background: rgba(52, 199, 89, 0.1); color: var(--success); }
+        .badge-blocked { background: rgba(255, 59, 48, 0.1); color: var(--danger); }
+
+        .hwid-tag {
+            background: #000; padding: 10px; border-radius: 8px; font-family: monospace;
+            font-size: 11px; color: #555; margin-bottom: 16px; border: 1px solid #111;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        .card-actions { display: flex; gap: 10px; }
+        .btn-action { flex: 1; padding: 10px; border-radius: 8px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: 0.2s; }
+        .btn-ban { background: rgba(255, 255, 255, 0.05); color: white; }
+        .btn-res { background: rgba(255, 255, 255, 0.05); color: white; }
+        .btn-del { background: rgba(255, 59, 48, 0.1); color: var(--danger); width: 45px; flex: none; }
+        .btn-action:hover { filter: brightness(1.5); }
+
+        .section { display: none; animation: fadeIn 0.4s ease; }
+        .section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .form-container {
+            background: var(--card-bg); padding: 40px; border-radius: 24px;
+            border: 1px solid var(--border); max-width: 600px; margin: 0 auto;
+        }
+        label { display: block; margin-bottom: 10px; font-size: 13px; color: var(--text-dim); font-weight: 600; }
+        input, select, textarea {
+            width: 100%; padding: 14px; background: #000; border: 1px solid var(--border);
+            border-radius: 12px; color: white; margin-bottom: 20px; outline: none; transition: 0.3s;
+        }
+        input:focus { border-color: var(--primary); }
+        .btn-submit { width: 100%; padding: 16px; border-radius: 12px; border: none; background: var(--primary); color: white; font-weight: 800; cursor: pointer; transition: 0.2s; }
+        .btn-submit:hover { opacity: 0.92; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,122,255,0.2); }
+        .btn-submit:active { transform: translateY(0); }
+
+        /* ===== CUSTOM DROPDOWN (copied from other file) ===== */
+        .custom-select { position: relative; width: 100%; margin-bottom: 20px; z-index: 10; }
+        .custom-select-trigger {
+            width: 100%; padding: 14px 16px; padding-right: 44px;
+            background: rgba(0,0,0,0.6); border: 1px solid var(--border);
+            border-radius: 12px; color: #fff; font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: 0.3s ease;
+            display: flex; align-items: center; gap: 10px; position: relative; user-select: none;
+        }
+        .custom-select-trigger:hover { border-color: rgba(255,255,255,0.15); }
+        .custom-select.open .custom-select-trigger { border-color: var(--primary); box-shadow: 0 0 16px rgba(0,122,255,0.15); }
+        .custom-select-trigger::after {
+            content: '\f078'; font-family: 'Font Awesome 6 Free'; font-weight: 900;
+            position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+            font-size: 11px; color: var(--text-dim); transition: 0.3s;
+        }
+        .custom-select.open .custom-select-trigger::after { transform: translateY(-50%) rotate(180deg); color: var(--primary); }
+        .custom-select-trigger .cs-icon {
+            width: 28px; height: 28px; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;
+        }
+        .custom-select-trigger .cs-icon.time { background: rgba(0,122,255,0.12); color: var(--primary-light); }
+        .custom-select-trigger .cs-icon.life { background: rgba(255,213,10,0.12); color: #FFD60A; }
+        .custom-select-trigger .cs-icon.custom-opt { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+        .custom-select-trigger .cs-label { flex: 1; text-align: left; }
+        .custom-dropdown {
+            position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+            background: rgba(20,20,20,0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 6px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            opacity: 0; visibility: hidden; transform: translateY(-8px) scale(0.97);
+            transition: 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            max-height: 280px; overflow-y: auto;
+        }
+        .custom-select.open .custom-dropdown { opacity: 1; visibility: visible; transform: translateY(0) scale(1); }
+        .custom-option {
+            padding: 12px 14px; border-radius: 10px; cursor: pointer; transition: 0.2s;
+            display: flex; align-items: center; gap: 12px; color: var(--text-dim);
+            font-weight: 600; font-size: 14px; position: relative;
+        }
+        .custom-option:hover { background: rgba(255,255,255,0.04); color: #fff; }
+        .custom-option.selected { background: rgba(0,122,255,0.1); color: #fff; }
+        .custom-option.selected::after {
+            content: '\f00c'; font-family: 'Font Awesome 6 Free'; font-weight: 900;
+            margin-left: auto; font-size: 11px; color: var(--primary);
+        }
+        .custom-option .co-icon {
+            width: 30px; height: 30px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;
+        }
+        .custom-option .co-icon.time { background: rgba(0,122,255,0.1); color: var(--primary-light); }
+        .custom-option .co-icon.life { background: rgba(255,213,10,0.1); color: #FFD60A; }
+        .custom-option .co-icon.custom-opt { background: rgba(255,255,255,0.04); color: var(--text-dim); }
+        .custom-option .co-info { flex: 1; }
+        .custom-option .co-title { font-size: 14px; font-weight: 700; color: #fff; }
+        .custom-option .co-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; font-weight: 400; }
+        .custom-dropdown::-webkit-scrollbar { width: 4px; }
+        .custom-dropdown::-webkit-scrollbar-track { background: transparent; }
+        .custom-dropdown::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+
+        #toast {
+            position: fixed; top: 30px; right: 30px; background: #fff; color: #000;
+            padding: 16px 30px; border-radius: 12px; font-weight: 800;
+            transform: translateX(200%); transition: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 11000;
+        }
+        #toast.active { transform: translateX(0); }
+
+        .kill-switch-card {
+            background: linear-gradient(135deg, rgba(255,59,48,0.1) 0%, rgba(0,0,0,0) 100%);
+            border: 1px solid rgba(255,59,48,0.2); padding: 30px; border-radius: 24px; text-align: center;
+        }
+
+        .hamburger { display: none; background: none; border: 1px solid var(--border); color: white; font-size: 18px; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+        .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 998; }
+        .sidebar-overlay.open { display: block; }
+
+        @media (max-width: 768px) {
+            body { overflow: auto; }
+            .dashboard { flex-direction: column; height: auto; min-height: 100vh; }
+            aside { position: fixed; top: 0; left: -300px; width: 260px; height: 100vh; z-index: 999; transition: left 0.3s ease; overflow-y: auto; }
+            aside.open { left: 0; }
+            main { width: 100%; }
+            .top-bar { padding: 14px 16px; position: sticky; top: 0; }
+            .hamburger { display: block; }
+            .content-body { padding: 16px; }
+            #userList { grid-template-columns: 1fr; gap: 14px; }
+            .card-front, .card-back { padding: 16px; }
+            .card-flip-wrapper { height: 200px; }
+            .countdown-segments { gap: 4px; }
+            .seg { min-width: 44px; padding: 7px 6px; }
+            .seg-num { font-size: 16px; }
+            .form-container { padding: 20px; }
+            #master > div { grid-template-columns: 1fr !important; }
+            .login-card { padding: 24px; }
+            #toast { top: 14px; right: 14px; left: 14px; text-align: center; transform: translateY(-200%); }
+            #toast.active { transform: translateY(0); }
+            .card-actions { flex-wrap: wrap; }
+            .btn-action { min-width: 80px; }
+            .logo { font-size: 20px; margin-bottom: 30px; }
+        }
+        @media (max-width: 400px) {
+            .content-body { padding: 12px; }
+            .form-container { padding: 16px; }
+            .top-bar { padding: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="toast">Operation Successful</div>
+
+    <div id="loginPage">
+        <canvas id="snowCanvas"></canvas>
+        <div id="mouseGlow"></div>
+        <div class="login-card">
+            <div class="login-logo-circle">
+                <img src="https://raw.githubusercontent.com/Golu1523/EXTERNAL-PREMIUM/bbe2e9883904fa38c786154c20719e0b3b1e7eee/SHAKE%20EXE%20LOGO.png" alt="Logo">
+            </div>
+            <h1>SHAKE <span>EXE</span></h1>
+            <p>Admin Control</p>
+            <div class="pass-wrapper">
+                <input type="password" id="admKey" class="login-input" placeholder="Password" onkeydown="if(event.key === 'Enter') login()">
+                <button class="pass-toggle" onclick="togglePass()" id="passToggleBtn" type="button">
+                    <i class="fa-solid fa-eye" id="passIcon"></i>
+                </button>
+            </div>
+            <div class="remember-row">
+                <input type="checkbox" id="rememberMe" checked>
+                <label for="rememberMe">Remember Me</label>
+            </div>
+            <div id="loginErr" class="login-err">Incorrect Access Key!</div>
+            <button class="btn-unlock" id="loginBtn" onclick="login()">Access System</button>
+        </div>
+    </div>
+
+    <div class="sidebar-overlay" id="sideOverlay" onclick="closeSidebar()"></div>
+
+    <div class="dashboard" id="mainLayout">
+        <aside id="sidebar">
+            <div class="logo">SHAKE <span>EXE</span></div>
+            <div class="nav-menu">
+                <div class="nav-link active" onclick="tab('users', this)">
+                    <i class="fa-solid fa-database"></i> <span>User Database</span>
+                </div>
+                <div class="nav-link" onclick="tab('create', this)">
+                    <i class="fa-solid fa-plus-circle"></i>
+                    <span>Key Generator</span>
+                </div>
+                <div class="nav-link" onclick="tab('master', this)">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>System Settings</span>
+                </div>
+            </div>
+            <div class="sidebar-footer" style="line-height: 1;">
+                <div class="dot" id="serverDot" style="background: var(--success); flex-shrink: 0; display: inline-block;"></div>
+                <span id="serverStatusText" style="color: var(--text-dim); font-size: 12px; display: inline-block; vertical-align: middle;">Server is now Online</span>
+            </div>
+        </aside>
+
+        <main>
+            <div class="top-bar">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button class="hamburger" onclick="openSidebar()"><i class="fa-solid fa-bars"></i></button>
+                    <div class="page-title" id="pTitle">User Database</div>
+                </div>
+                <div class="status-pill">
+                    <div class="dot" id="stDot" style="background: var(--success);"></div>
+                    <span id="stText" style="color: var(--success);">ONLINE</span>
+                </div>
+            </div>
+
+            <div class="content-body">
+                <section id="users" class="section active">
+                    <div id="userList"></div>
+                </section>
+
+                <section id="create" class="section">
+                    <div class="form-container">
+                        <h2 style="margin-bottom: 25px;">Generate Access Key</h2>
+                        <label>Enter License Key</label>
+                        <input type="text" id="nu" placeholder="Enter License Key" autocomplete="off" onkeydown="if(event.key === 'Enter') addKey()">
+
+                        <label>Access Duration</label>
+                        <div class="custom-select" id="durationSelect">
+                            <div class="custom-select-trigger" onclick="toggleDropdown('durationSelect')">
+                                <div class="cs-icon time"><i class="fa-solid fa-calendar-day"></i></div>
+                                <div class="cs-label">1 Day Access</div>
+                            </div>
+                            <div class="custom-dropdown">
+                                <div class="custom-option selected" data-value="86400000" onclick="selectOption('durationSelect', this)">
+                                    <div class="co-icon time"><i class="fa-solid fa-calendar-day"></i></div>
+                                    <div class="co-info"><div class="co-title">1 Day Access</div><div class="co-sub">24 hour license</div></div>
+                                </div>
+                                <div class="custom-option" data-value="604800000" onclick="selectOption('durationSelect', this)">
+                                    <div class="co-icon time"><i class="fa-solid fa-calendar-week"></i></div>
+                                    <div class="co-info"><div class="co-title">7 Day Access</div><div class="co-sub">One week license</div></div>
+                                </div>
+                                <div class="custom-option" data-value="2592000000" onclick="selectOption('durationSelect', this)">
+                                    <div class="co-icon time"><i class="fa-solid fa-calendar"></i></div>
+                                    <div class="co-info"><div class="co-title">30 Day Access</div><div class="co-sub">Monthly license</div></div>
+                                </div>
+                                <div class="custom-option" data-value="custom" onclick="selectOption('durationSelect', this)">
+                                    <div class="co-icon custom-opt"><i class="fa-solid fa-sliders"></i></div>
+                                    <div class="co-info"><div class="co-title">Custom Duration</div><div class="co-sub">Set your own days</div></div>
+                                </div>
+                                <div class="custom-option" data-value="4102444800000" onclick="selectOption('durationSelect', this)">
+                                    <div class="co-icon life"><i class="fa-solid fa-crown"></i></div>
+                                    <div class="co-info"><div class="co-title">Lifetime Access</div><div class="co-sub">Never expires</div></div>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="number" id="customInput" placeholder="How many days?" style="display:none;">
+                        <button class="btn-submit" onclick="addKey()">DEPLOY KEY NOW</button>
+                    </div>
+                </section>
+
+                <section id="master" class="section">
+                    <div style="display: grid; grid-template-columns: 1fr 0.75fr; gap: 30px; align-items: stretch;">
+                        <div class="kill-switch-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; height: 100%; box-sizing: border-box;">
+                            <i class="fa-solid fa-circle-exclamation" style="font-size: 40px; color: var(--danger); margin-bottom: 16px;"></i>
+                            <h3 style="font-size: 16px; margin-bottom: 10px;">Master Kill Switch</h3>
+                            <p style="font-size: 13px; color: var(--text-dim); text-align: center; line-height: 1.6; margin-bottom: 24px;">
+                                Instantly disable or enable all client connections globally.
+                            </p>
+                            <button id="killToggleBtn" class="btn-submit" style="width: 100%;" onclick="toggleKill()">FETCHING...</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // ===== Snow animation =====
+        (function() {
+            const canvas = document.getElementById('snowCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            let W = canvas.width = window.innerWidth;
+            let H = canvas.height = window.innerHeight;
+            window.addEventListener('resize', () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; });
+            const flakes = Array.from({length: 120}, () => ({
+                x: Math.random() * W, y: Math.random() * H,
+                r: Math.random() * 2.5 + 0.5, speed: Math.random() * 0.6 + 0.2,
+                drift: Math.random() * 0.4 - 0.2, opacity: Math.random() * 0.5 + 0.2
+            }));
+            function draw() {
+                ctx.clearRect(0, 0, W, H);
+                flakes.forEach(f => {
+                    ctx.beginPath();
+                    ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255,255,255,${f.opacity})`;
+                    ctx.fill();
+                    f.y += f.speed; f.x += f.drift;
+                    if (f.y > H) { f.y = -5; f.x = Math.random() * W; }
+                    if (f.x > W) f.x = 0;
+                    if (f.x < 0) f.x = W;
+                });
+                requestAnimationFrame(draw);
+            }
+            draw();
+        })();
+
+        // ===== Mouse glow =====
+        (function() {
+            const glow = document.getElementById('mouseGlow');
+            if (!glow) return;
+            document.getElementById('loginPage').addEventListener('mousemove', function(e) {
+                glow.style.left = e.clientX + 'px';
+                glow.style.top = e.clientY + 'px';
+            });
+        })();
+
+        // ===== Firebase =====
+        const config = {
+            apiKey: "AIzaSyB0P9nY21WLiE9D8iXo5iWJkRS1e_9JkAs",
+            authDomain: "suvu-xiters-new.firebaseapp.com",
+            databaseURL: "https://suvu-xiters-new-default-rtdb.firebaseio.com",
+            projectId: "suvu-xiters-new",
+            storageBucket: "suvu-xiters-new.firebasestorage.app",
+            messagingSenderId: "66594224601",
+            appId: "1:66594224601:web:be5d9956aeb946cb2301c8"
+        };
+
+        const authApp = firebase.initializeApp(config);
+        const dataApp = firebase.initializeApp({
+            databaseURL: "https://external-premium-default-rtdb.firebaseio.com"
+        }, "externalPanel");
+
+        const db = dataApp.database();
+        const auth = authApp.auth();
+
+        const ADMIN_EMAIL = "admin@shake.com";
+        let currentStatus = "OFF";
+
+        function togglePass() {
+            const inp = document.getElementById('admKey');
+            const icon = document.getElementById('passIcon');
+            if (inp.type === 'password') { inp.type = 'text'; icon.className = 'fa-solid fa-eye-slash'; }
+            else { inp.type = 'password'; icon.className = 'fa-solid fa-eye'; }
+        }
+
+        window.addEventListener('load', function() {
+            const saved = localStorage.getItem('adminPass');
+            if (saved) document.getElementById('admKey').value = saved;
+        });
+
+        function login() {
+            const pass = document.getElementById('admKey').value;
+            const remember = document.getElementById('rememberMe').checked;
+            const btn = document.getElementById('loginBtn');
+            const errDiv = document.getElementById('loginErr');
+            if (!pass) return;
+
+            errDiv.style.display = 'none';
+            btn.innerText = "Verifying...";
+            btn.disabled = true;
+
+            auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).then(function() {
+                return auth.signInWithEmailAndPassword(ADMIN_EMAIL, pass);
+            }).then(function() {
+                if (remember) localStorage.setItem('adminPass', pass);
+                else localStorage.removeItem('adminPass');
+                document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('mainLayout').style.display = 'flex';
+                sync();
+                show("System Decrypted - Welcome Admin");
+            }).catch(function(error) {
+                errDiv.style.display = 'block';
+                errDiv.innerText = "Login Failed: " + error.code;
+                btn.innerText = "Access System";
+                btn.disabled = false;
+                console.error("Login error:", error);
+            });
+        }
+
+        function logout() {
+            localStorage.removeItem('adminPass');
+            auth.signOut().then(function() { location.reload(); });
+        }
+
+        function openSidebar() {
+            document.getElementById('sidebar').classList.add('open');
+            document.getElementById('sideOverlay').classList.add('open');
+        }
+        function closeSidebar() {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sideOverlay').classList.remove('open');
+        }
+
+        function tab(id, el) {
+            document.querySelectorAll('.section').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; });
+            document.querySelectorAll('.nav-link').forEach(i => i.classList.remove('active'));
+            const sec = document.getElementById(id);
+            if (sec) { sec.classList.add('active'); sec.style.display = 'block'; }
+            el.classList.add('active');
+            document.getElementById('pTitle').innerText = el.innerText.trim();
+            closeSidebar();
+        }
+
+        function toggleCustom(val) {
+            document.getElementById('customInput').style.display = (val === 'custom') ? 'block' : 'none';
+        }
+
+        // ===== Custom dropdown =====
+        function toggleDropdown(id) {
+            const el = document.getElementById(id);
+            const wasOpen = el.classList.contains('open');
+            closeAllDropdowns();
+            if (!wasOpen) el.classList.add('open');
+        }
+
+        function selectOption(selectId, optionEl) {
+            const container = document.getElementById(selectId);
+            const val = optionEl.dataset.value;
+            const trigger = container.querySelector('.custom-select-trigger');
+            const label = optionEl.querySelector('.co-title')?.textContent || optionEl.textContent.trim();
+            const iconHtml = optionEl.querySelector('.co-icon')?.innerHTML || '';
+            const iconClass = optionEl.querySelector('.co-icon')?.className.replace('co-icon', 'cs-icon') || '';
+
+            container.querySelectorAll('.custom-option').forEach(o => o.classList.remove('selected'));
+            optionEl.classList.add('selected');
+
+            const labelEl = trigger.querySelector('.cs-label');
+            let iconEl = trigger.querySelector('.cs-icon');
+            if (iconEl) {
+                iconEl.innerHTML = iconHtml;
+                iconEl.className = iconClass;
+            } else {
+                const newIcon = document.createElement('div');
+                newIcon.className = iconClass;
+                newIcon.innerHTML = iconHtml;
+                trigger.insertBefore(newIcon, labelEl);
+            }
+            labelEl.textContent = label;
+
+            closeAllDropdowns();
+            if (selectId === 'durationSelect') toggleCustom(val);
+        }
+
+        function closeAllDropdowns() {
+            document.querySelectorAll('.custom-select').forEach(el => el.classList.remove('open'));
+        }
+
+        function getSelectValue(id) {
+            const sel = document.getElementById(id);
+            const opt = sel.querySelector('.custom-option.selected');
+            return opt ? opt.dataset.value : null;
+        }
+
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.custom-select')) closeAllDropdowns();
+        });
+
+        // ===== Countdown =====
+        const countdownTimers = {};
+
+        function startCountdown(elementId, expiryMs) {
+            if (countdownTimers[elementId]) clearInterval(countdownTimers[elementId]);
+            const LIFETIME = 4102444800000;
+            const backEl = document.getElementById('back_' + elementId);
+            if (!backEl) return;
+
+            if (!expiryMs || expiryMs >= LIFETIME) {
+                backEl.innerHTML = `
+                    <div class="vip-crown">\u{1F451}</div>
+                    <div class="vip-text">PERMANENT</div>
+                    <div class="vip-sub">\u2756 Lifetime Access \u2756</div>`;
+                return;
+            }
+
+            function tick() {
+                const el = document.getElementById('back_' + elementId);
+                if (!el) { clearInterval(countdownTimers[elementId]); return; }
+                const diff = expiryMs - Date.now();
+                if (diff <= 0) {
+                    el.innerHTML = '<div class="expired-tag">\u26a0 LICENSE EXPIRED</div>';
+                    clearInterval(countdownTimers[elementId]);
+                    return;
+                }
+                const days = Math.floor(diff / 86400000);
+                const hrs  = Math.floor((diff % 86400000) / 3600000);
+                const mins = Math.floor((diff % 3600000) / 60000);
+                const secs = Math.floor((diff % 60000) / 1000);
+                el.innerHTML = `
+                    <div class="countdown-user-name"><i class="fa-solid fa-clock" style="margin-right:5px;"></i>Time Remaining</div>
+                    <div class="countdown-segments">
+                        <div class="seg"><div class="seg-num">${String(days).padStart(2,'0')}</div><div class="seg-label">Days</div></div>
+                        <div class="seg"><div class="seg-num">${String(hrs).padStart(2,'0')}</div><div class="seg-label">Hrs</div></div>
+                        <div class="seg"><div class="seg-num">${String(mins).padStart(2,'0')}</div><div class="seg-label">Min</div></div>
+                        <div class="seg"><div class="seg-num">${String(secs).padStart(2,'0')}</div><div class="seg-label">Sec</div></div>
+                    </div>`;
+            }
+            tick();
+            countdownTimers[elementId] = setInterval(tick, 1000);
+        }
+
+        function flipCard(wrapperEl) { wrapperEl.classList.toggle('flipped'); }
+
+        function esc(s) {
+            return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        // ===== Sync =====
+        function sync() {
+            db.ref('.info/connected').on('value', s => console.log("Firebase connection:", s.val()));
+
+            db.ref('Users').on('value', snap => {
+                Object.keys(countdownTimers).forEach(k => clearInterval(countdownTimers[k]));
+
+                const list = document.getElementById('userList');
+                list.innerHTML = "";
+                let count = 0;
+                snap.forEach(child => {
+                    const u = child.val();
+                    if (!u || !u.password) return;
+                    count++;
+                    const name = child.key;
+                    const isB = u.status === 'blocked';
+                    const countdownId = 'cd_' + name.replace(/[^a-zA-Z0-9]/g, '_');
+                    const jsName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+                    list.innerHTML += `
+    <div class="card-flip-wrapper" id="wrap_${countdownId}">
+        <div class="card-inner">
+
+            <div class="card-front" onclick="flipCard(document.getElementById('wrap_${countdownId}'))">
+                <div class="card-header">
+                    <div class="key-line"><span class="key-label">KEY:</span>${esc(name)}</div>
+                    <span class="badge ${isB ? 'badge-blocked' : 'badge-active'}">${esc(u.status)}</span>
+                </div>
+                <div class="hwid-tag">HWID: ${esc(u.hwid || 'NOT REGISTERED')}</div>
+                <div class="card-actions">
+                    <button class="btn-action btn-ban" onclick="event.stopPropagation();ban('${jsName}','${u.status}')">
+                        <i class="fa-solid ${isB?'fa-unlock':'fa-ban'}"></i> ${isB?'Unban':'Ban'}
+                    </button>
+                    <button class="btn-action btn-res" onclick="event.stopPropagation();res('${jsName}')">Reset HWID</button>
+                    <button class="btn-action btn-del" onclick="event.stopPropagation();del('${jsName}')"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            </div>
+
+            <div class="card-back" onclick="flipCard(document.getElementById('wrap_${countdownId}'))">
+                <div id="back_${countdownId}"></div>
+            </div>
+
+        </div>
+    </div>`;
+                });
+
+                if (count === 0) {
+                    list.innerHTML = '<p style="text-align:center; color:var(--text-dim); font-size:14px; margin-top:60px; grid-column:1/-1;">No users found in database.</p>';
+                }
+
+                setTimeout(() => {
+                    snap.forEach(child => {
+                        const u = child.val();
+                        if (!u || !u.password) return;
+                        const countdownId = 'cd_' + child.key.replace(/[^a-zA-Z0-9]/g, '_');
+                        startCountdown(countdownId, u.expiry);
+                    });
+                }, 50);
+            }, error => {
+                show("Users Read Error: " + error.code);
+                console.error("Users read failed:", error);
+            });
+
+            db.ref('STATUS').on('value', s => {
+                currentStatus = s.val() ?? "OFF";
+                const live = (currentStatus === "ON" || currentStatus === 1 || currentStatus === "1");
+
+                const dot = document.getElementById('stDot');
+                const txt = document.getElementById('stText');
+                const tgl = document.getElementById('killToggleBtn');
+
+                dot.style.background = live ? "var(--success)" : "var(--danger)";
+                txt.innerText = live ? "ONLINE" : "OFFLINE";
+                txt.style.color = live ? "var(--success)" : "var(--danger)";
+
+                tgl.innerText = live ? "DEACTIVATE SYSTEM" : "ACTIVATE SYSTEM";
+                tgl.style.background = live ? "var(--danger)" : "var(--success)";
+
+                const sideDot = document.getElementById('serverDot');
+                const sideTxt = document.getElementById('serverStatusText');
+                if (live) {
+                    sideDot.style.background = "var(--success)";
+                    sideTxt.innerText = "Server is now Online";
+                    sideTxt.style.color = "var(--success)";
+                } else {
+                    sideDot.style.background = "var(--danger)";
+                    sideTxt.innerText = "Server is currently Offline";
+                    sideTxt.style.color = "var(--danger)";
+                }
+            }, error => {
+                show("STATUS Read Error: " + error.code);
+                console.error("STATUS read failed:", error);
+            });
+        }
+
+        function toggleKill() {
+            const live = (currentStatus === "ON" || currentStatus === 1 || currentStatus === "1");
+            const nextVal = live ? "OFF" : "ON";
+            db.ref('STATUS').set(nextVal);
+            show(nextVal === "ON" ? "System Activated" : "System Deactivated");
+        }
+
+        function ban(n, s) {
+            db.ref('Users/' + n).update({status: s === 'active' ? 'blocked' : 'active'});
+            show("Status Updated");
+        }
+
+        function res(n) {
+            db.ref('Users/' + n).update({hwid: ""});
+            show("Device ID Flushed");
+        }
+
+        function del(n) {
+            if (confirm("Confirm deletion of " + n + "?")) {
+                db.ref('Users/' + n).remove();
+                show("Entry Deleted");
+            }
+        }
+
+        // Single license key: used as both the username and the password in the database
+        function addKey() {
+            const key = document.getElementById('nu').value.trim();
+            const sel = getSelectValue('durationSelect');
+            if (!key) return alert("Enter License Key!");
+            let time;
+            if (sel === 'custom') {
+                const days = parseInt(document.getElementById('customInput').value);
+                if (!days) return alert("Enter number of days!");
+                time = days * 86400000;
+            } else { time = parseInt(sel); }
+
+            db.ref('Users/' + key).set({password: key, status: "active", hwid: "", expiry: Date.now() + time});
+            show("New Access Key Deployed");
+            document.getElementById('nu').value = "";
+            tab('users', document.querySelector('.nav-link'));
+        }
+
+        let toastTimer;
+        function show(m) {
+            const t = document.getElementById('toast');
+            clearTimeout(toastTimer);
+            t.innerText = m;
+            t.classList.add('active');
+            toastTimer = setTimeout(() => t.classList.remove('active'), 3000);
+        }
+    </script>
+</body>
+</html>
